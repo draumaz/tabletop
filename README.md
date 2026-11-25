@@ -51,6 +51,15 @@ cd tabletop
 install -Dm755 tabletop ~/.local/bin/tabletop
 ```
 
+For an app-menu entry with an icon (the Arch package installs these for you):
+
+```sh
+install -Dm644 data/tabletop.desktop ~/.local/share/applications/tabletop.desktop
+install -Dm644 data/tabletop.svg ~/.local/share/icons/hicolor/scalable/apps/tabletop.svg
+```
+
+Launched from the menu, tabletop shows errors in a dialog, since there's no terminal.
+
 ## Usage
 
 Run `tabletop` to pick a phone and an app from lists, or skip a picker by naming your choice:

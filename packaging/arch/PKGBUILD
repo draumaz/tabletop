@@ -1,13 +1,13 @@
 # Maintainer: Emma Anderson <workeandrs@gmail.com>
 pkgname=tabletop-git
 _pkgname=tabletop
-pkgver=r2.6170f9b
+pkgver=r3.fdf0180
 pkgrel=1
 pkgdesc='Run Android apps in tablet layout, in their own window on your Linux desktop'
 arch=('any')
 url='https://github.com/draumaz/tabletop'
 license=('GPL-3.0-or-later')
-depends=('android-tools' 'scrcpy' 'zenity')
+depends=('android-tools' 'hicolor-icon-theme' 'scrcpy' 'zenity')
 makedepends=('git')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
@@ -27,5 +27,7 @@ check() {
 package() {
   cd "$_pkgname"
   install -Dm755 "$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+  install -Dm644 "data/$_pkgname.desktop" "$pkgdir/usr/share/applications/$_pkgname.desktop"
+  install -Dm644 "data/$_pkgname.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/$_pkgname.svg"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
 }

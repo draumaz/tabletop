@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=tabletop
+GenericName=Android App Window
+Comment=Run Android apps in tablet layout, in their own window
+Exec=tabletop
+Icon=tabletop
+Terminal=false
+Categories=Utility;
+Keywords=android;phone;scrcpy;adb;tablet;mirror;
