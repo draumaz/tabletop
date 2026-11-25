@@ -1,0 +1,4 @@
+# Built Arch packages, wherever they end up (.pkg.tar.zst, .xz, .gz, ...).
+# packaging/arch/.gitignore also covers makepkg's build folders.
+*.pkg.tar
+*.pkg.tar.*

@@ -1,7 +1,7 @@
 # Maintainer: Emma Anderson <workeandrs@gmail.com>
 pkgname=tabletop-git
 _pkgname=tabletop
-pkgver=r3.fdf0180
+pkgver=r4.0ac5c25
 pkgrel=1
 pkgdesc='Run Android apps in tablet layout, in their own window on your Linux desktop'
 arch=('any')
