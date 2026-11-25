@@ -35,9 +35,19 @@ adb devices ──► pick a phone ──► pick an app ──► scrcpy --new-
 
 ## Install
 
-It's a single shell script. Put it anywhere on your `PATH`:
+On Arch Linux, build and install the package with the included PKGBUILD:
 
 ```sh
+git clone https://github.com/draumaz/tabletop.git
+cd tabletop/packaging/arch
+makepkg -si
+```
+
+Anywhere else, it's a single shell script. Put it anywhere on your `PATH`:
+
+```sh
+git clone https://github.com/draumaz/tabletop.git
+cd tabletop
 install -Dm755 tabletop ~/.local/bin/tabletop
 ```
 

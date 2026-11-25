@@ -1,0 +1,31 @@
+# Maintainer: Emma Anderson <workeandrs@gmail.com>
+pkgname=tabletop-git
+_pkgname=tabletop
+pkgver=r1.c8ad584
+pkgrel=1
+pkgdesc='Run Android apps in tablet layout, in their own window on your Linux desktop'
+arch=('any')
+url='https://github.com/draumaz/tabletop'
+license=('GPL-3.0-or-later')
+depends=('android-tools' 'scrcpy' 'zenity')
+makedepends=('git')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+source=("$_pkgname::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_pkgname"
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+check() {
+  cd "$_pkgname"
+  sh -n "$_pkgname"
+}
+
+package() {
+  cd "$_pkgname"
+  install -Dm755 "$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
+}
