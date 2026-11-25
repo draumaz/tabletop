@@ -1,0 +1,106 @@
+#!/bin/sh -e
+
+# Virtual display as WIDTHxHEIGHT/DPI. The default is a 1280x800dp tablet
+# layout at 1.2x, which fits a 1080p monitor. To keep that layout at another
+# scale s, use (1280*s)x(800*s)/(160*s); a higher DPI makes everything bigger.
+DISPLAY_SPEC="${TABLETOP_DISPLAY:-1536x960/192}"
+
+# Both pickers use single-column zenity lists: zenity 4's multi-column lists
+# break arrow-key navigation. Device rows are readable labels that carry the
+# serial, which is parsed back out of the chosen row. Rows are fed on stdin,
+# one per line, so labels with spaces survive.
+
+if_empty_exit() {
+  [ -n "$1" ] || exit 1
+}
+
+codename() {
+  adb -s "$1" shell getprop ro.product.device | tr -d '\r'
+}
+
+# The phone's own serial, however it is connected:
+#   adb-52220DLAQ001KK-Yiyw5t._adb-tls-connect._tcp -> 52220DLAQ001KK (wireless)
+#   52220DLAQ001KK                                  -> 52220DLAQ001KK (USB)
+# Anything else (emulator-5554, 192.168.1.5:5555) is returned unchanged.
+hw_serial() {
+  case "$1" in
+    adb-*)
+      s="${1#adb-}"
+      printf '%s\n' "${s%%-*}"
+    ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+# Every ready device (not "unauthorized" or "offline"), USB and wireless. A
+# phone connected both ways is listed once, preferring USB: wireless ids start
+# with "adb-", so they rank after USB ones for the same serial.
+DEVICES="$(
+  adb devices | awk 'NR > 1 && $2 == "device" {print $1}' \
+    | while read -r d; do
+        case "$d" in adb-*) rank=1 ;; *) rank=0 ;; esac
+        printf '%s %s %s\n' "$(hw_serial "$d")" "$rank" "$d"
+      done \
+    | sort -k1,1 -k2,2n \
+    | awk '!seen[$1]++ {print $3}'
+)"
+
+case "$(printf '%s\n' "$DEVICES" | grep -c .)" in
+  0) exit 1 ;;
+  1) DEVICE="$DEVICES" ;;
+  *)
+    # Rows look like "tokay (52220DLAQ001KK)"; the serial keeps two phones of
+    # the same model apart.
+    CHOICE="$(
+      for d in $DEVICES; do
+        printf '%s (%s)\n' "$(codename "$d")" "$(hw_serial "$d")"
+      done | zenity \
+        --list \
+        --title="Choose a device" \
+        --text="Pick which device to run an app from." \
+        --column="Device"
+    )"
+    if_empty_exit "$CHOICE"
+    SERIAL="${CHOICE##*(}"
+    SERIAL="${SERIAL%)}"
+    DEVICE=""
+    for d in $DEVICES; do
+      if [ "$(hw_serial "$d")" = "$SERIAL" ]; then
+        DEVICE="$d"
+        break
+      fi
+    done
+  ;;
+esac
+
+if_empty_exit "$DEVICE"
+
+CODENAME="$(codename "$DEVICE")"
+
+# Only packages with a launcher icon: query-activities prints one
+# "package/activity" line per launcher entry.
+PKG="$(
+  adb -s "$DEVICE" shell cmd package query-activities --components \
+      -a android.intent.action.MAIN -c android.intent.category.LAUNCHER \
+    | tr -d '\r' \
+    | cut -d/ -f1 \
+    | sort -u \
+    | zenity \
+      --list \
+      --width=800 \
+      --height=650 \
+      --title="Pick an app" \
+      --text="Mirroring from $CODENAME" \
+      --column="Package"
+)"
+
+if_empty_exit "$PKG"
+
+scrcpy \
+  -s "$DEVICE" \
+  --new-display="$DISPLAY_SPEC" \
+  --flex-display \
+  --keep-active \
+  --no-vd-system-decorations \
+  --start-app="$PKG" \
+  --window-title="$PKG"
