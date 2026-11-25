@@ -1,9 +1,57 @@
 #!/bin/sh -e
 
+usage() {
+  cat <<'EOF'
+Usage: tabletop [options]
+
+Pick a phone and an app, then open the app in tablet layout in its own
+window. Any choice given as an option skips its picker.
+
+  -d, --device=DEVICE    adb id, serial or codename (e.g. tokay)
+  -a, --app=APP          package, or part of one (e.g. sustenance)
+      --display=SPEC     virtual display as WIDTHxHEIGHT/DPI
+                         (default 1536x960/192, or $TABLETOP_DISPLAY)
+  -h, --help             show this help
+
+If DEVICE or APP matches more than one, the picker opens with just those.
+EOF
+}
+
 # Virtual display as WIDTHxHEIGHT/DPI. The default is a 1280x800dp tablet
 # layout at 1.2x, which fits a 1080p monitor. To keep that layout at another
 # scale s, use (1280*s)x(800*s)/(160*s); a higher DPI makes everything bigger.
 DISPLAY_SPEC="${TABLETOP_DISPLAY:-1536x960/192}"
+DEVICE_ARG=""
+APP_ARG=""
+DEVICE=""
+PKG=""
+
+# Errors go to stderr, and to a dialog when there's no terminal to see them
+# (e.g. launched from a desktop shortcut).
+die() {
+  printf 'tabletop: %s\n' "$*" >&2
+  if [ ! -t 2 ] && command -v zenity >/dev/null 2>&1; then
+    zenity --error --no-markup --title="tabletop" --text="$*" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+need_value() {
+  [ "$2" -ge 2 ] || die "$1 needs a value (see --help)"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h | --help) usage; exit 0 ;;
+    -d | --device) need_value "$1" $#; DEVICE_ARG="$2"; shift 2 ;;
+    --device=*) DEVICE_ARG="${1#*=}"; shift ;;
+    -a | --app) need_value "$1" $#; APP_ARG="$2"; shift 2 ;;
+    --app=*) APP_ARG="${1#*=}"; shift ;;
+    --display) need_value "$1" $#; DISPLAY_SPEC="$2"; shift 2 ;;
+    --display=*) DISPLAY_SPEC="${1#*=}"; shift ;;
+    *) die "unknown option: $1 (see --help)" ;;
+  esac
+done
 
 # Both pickers use single-column zenity lists: zenity 4's multi-column lists
 # break arrow-key navigation. Device rows are readable labels that carry the
@@ -12,6 +60,10 @@ DISPLAY_SPEC="${TABLETOP_DISPLAY:-1536x960/192}"
 
 if_empty_exit() {
   [ -n "$1" ] || exit 1
+}
+
+lower() {
+  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
 codename() {
@@ -32,12 +84,38 @@ hw_serial() {
   esac
 }
 
-# Every ready device (not "unauthorized" or "offline"), USB and wireless. A
-# phone connected both ways is listed once, preferring USB: wireless ids start
-# with "adb-", so they rank after USB ones for the same serial.
+# Rows look like "tokay (52220DLAQ001KK)"; the serial keeps two phones of the
+# same model apart. Prints the chosen device's id, from the ids given.
+pick_device() {
+  choice="$(
+    for d in "$@"; do
+      printf '%s (%s)\n' "$(codename "$d")" "$(hw_serial "$d")"
+    done | zenity \
+      --list \
+      --title="Choose a device" \
+      --text="Pick which device to run an app from." \
+      --column="Device"
+  )" || true
+  [ -n "$choice" ] || return 0
+  serial="${choice##*(}"
+  serial="${serial%)}"
+  for d in "$@"; do
+    if [ "$(hw_serial "$d")" = "$serial" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+  done
+}
+
+# Every ready device (not "unauthorized" or "offline"), USB and wireless.
+READY="$(adb devices | awk 'NR > 1 && $2 == "device" {print $1}')"
+
+# A phone connected both ways is listed once, preferring USB: wireless ids
+# start with "adb-", so they rank after USB ones for the same serial.
 DEVICES="$(
-  adb devices | awk 'NR > 1 && $2 == "device" {print $1}' \
+  printf '%s\n' "$READY" \
     | while read -r d; do
+        [ -n "$d" ] || continue
         case "$d" in adb-*) rank=1 ;; *) rank=0 ;; esac
         printf '%s %s %s\n' "$(hw_serial "$d")" "$rank" "$d"
       done \
@@ -45,33 +123,37 @@ DEVICES="$(
     | awk '!seen[$1]++ {print $3}'
 )"
 
-case "$(printf '%s\n' "$DEVICES" | grep -c .)" in
-  0) exit 1 ;;
-  1) DEVICE="$DEVICES" ;;
-  *)
-    # Rows look like "tokay (52220DLAQ001KK)"; the serial keeps two phones of
-    # the same model apart.
-    CHOICE="$(
-      for d in $DEVICES; do
-        printf '%s (%s)\n' "$(codename "$d")" "$(hw_serial "$d")"
-      done | zenity \
-        --list \
-        --title="Choose a device" \
-        --text="Pick which device to run an app from." \
-        --column="Device"
-    )"
-    if_empty_exit "$CHOICE"
-    SERIAL="${CHOICE##*(}"
-    SERIAL="${SERIAL%)}"
-    DEVICE=""
+[ -n "$DEVICES" ] || die "no devices found. Is USB or Wireless debugging on, and is the phone authorized?"
+
+if [ -n "$DEVICE_ARG" ]; then
+  # An exact adb id is used as given, even when the phone is also on USB.
+  # Otherwise match the serial or the codename (case-insensitive).
+  if printf '%s\n' "$READY" | grep -qxF -- "$DEVICE_ARG"; then
+    MATCHES="$DEVICE_ARG"
+  else
+    want="$(lower "$DEVICE_ARG")"
+    want_serial="$(lower "$(hw_serial "$DEVICE_ARG")")"
+    MATCHES=""
     for d in $DEVICES; do
-      if [ "$(hw_serial "$d")" = "$SERIAL" ]; then
-        DEVICE="$d"
-        break
+      if [ "$(lower "$(hw_serial "$d")")" = "$want_serial" ] \
+        || [ "$(lower "$(codename "$d")")" = "$want" ]; then
+        MATCHES="$MATCHES $d"
       fi
     done
-  ;;
-esac
+  fi
+  set -- $MATCHES
+  case $# in
+    0) die "no connected device matches '$DEVICE_ARG'" ;;
+    1) DEVICE="$1" ;;
+    *) DEVICE="$(pick_device "$@")" ;;
+  esac
+else
+  set -- $DEVICES
+  case $# in
+    1) DEVICE="$1" ;;
+    *) DEVICE="$(pick_device "$@")" ;;
+  esac
+fi
 
 if_empty_exit "$DEVICE"
 
@@ -79,20 +161,40 @@ CODENAME="$(codename "$DEVICE")"
 
 # Only packages with a launcher icon: query-activities prints one
 # "package/activity" line per launcher entry.
-PKG="$(
+APPS="$(
   adb -s "$DEVICE" shell cmd package query-activities --components \
       -a android.intent.action.MAIN -c android.intent.category.LAUNCHER \
     | tr -d '\r' \
     | cut -d/ -f1 \
-    | sort -u \
-    | zenity \
+    | sort -u
+)"
+
+if [ -n "$APP_ARG" ]; then
+  # Best match first: the exact package, then packages whose last segment is
+  # the query (so "sustenance" picks xyz.draumaz.sustenance over its .debug
+  # build), then any package containing it. All case-insensitive.
+  want="$(lower "$APP_ARG")"
+  MATCHES="$(printf '%s\n' "$APPS" | awk -v q="$want" 'tolower($0) == q')"
+  [ -n "$MATCHES" ] || MATCHES="$(printf '%s\n' "$APPS" | awk -F. -v q="$want" 'tolower($NF) == q')"
+  [ -n "$MATCHES" ] || MATCHES="$(printf '%s\n' "$APPS" | awk -v q="$want" 'index(tolower($0), q)')"
+  case "$(printf '%s\n' "$MATCHES" | grep -c .)" in
+    0) die "no launchable app on $CODENAME matches '$APP_ARG'" ;;
+    1) APPS="$MATCHES"; PKG="$MATCHES" ;;
+    *) APPS="$MATCHES" ;;
+  esac
+fi
+
+if [ -z "$PKG" ]; then
+  PKG="$(
+    printf '%s\n' "$APPS" | zenity \
       --list \
       --width=800 \
       --height=650 \
       --title="Pick an app" \
       --text="Mirroring from $CODENAME" \
       --column="Package"
-)"
+  )" || true
+fi
 
 if_empty_exit "$PKG"
 

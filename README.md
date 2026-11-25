@@ -51,10 +51,32 @@ cd tabletop
 install -Dm755 tabletop ~/.local/bin/tabletop
 ```
 
+## Usage
+
+Run `tabletop` to pick a phone and an app from lists, or skip a picker by naming your choice:
+
+```sh
+tabletop                              # pick both
+tabletop --app=sustenance             # xyz.draumaz.sustenance
+tabletop --device=tokay --app=maps    # by codename
+tabletop -d 52220DLAQ001KK -a settings
+```
+
+| option | |
+|---|---|
+| `-d`, `--device=DEVICE` | adb id, serial or codename. An exact adb id is used as given, even if the phone is also on USB. |
+| `-a`, `--app=APP` | a package, or part of one. A match on the package's last segment wins, so `sustenance` picks `xyz.draumaz.sustenance` over `xyz.draumaz.sustenance.debug`. |
+| `--display=SPEC` | virtual display size, see below |
+| `-h`, `--help` | show help |
+
+Matching is case-insensitive. If a name matches more than one device or app, the picker
+opens with just those. If it matches nothing, tabletop says so and exits.
+
 ## Display size
 
 By default the virtual display is `1536x960` at 192 dpi: a 1280×800 dp tablet layout,
-shown 1.2× larger than 1:1, which fits on a 1080p monitor. Set `TABLETOP_DISPLAY` to change it:
+shown 1.2× larger than 1:1, which fits on a 1080p monitor. Change it with `--display`, or set
+`TABLETOP_DISPLAY` to change the default:
 
 ```sh
 TABLETOP_DISPLAY=1280x800/160 tabletop   # same layout at 1:1, for smaller screens
